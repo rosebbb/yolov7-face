@@ -2,19 +2,16 @@ import argparse
 import time
 from pathlib import Path
 
-import os
-import copy
 import cv2
 import torch
 import torch.backends.cudnn as cudnn
-from numpy import random
 
 from models.experimental import attempt_load
-from utils.datasets import LoadStreams, LoadImages
-from utils.general import check_img_size, check_requirements, check_imshow, non_max_suppression, apply_classifier, \
+from utils.datasets import LoadImages
+from utils.general import check_img_size, non_max_suppression, \
     scale_coords, xyxy2xywh, strip_optimizer, set_logging, increment_path, save_one_box
 from utils.plots import colors, plot_one_box
-from utils.torch_utils import select_device, load_classifier, time_synchronized
+from utils.torch_utils import select_device, time_synchronized
 
 
 def detect(opt):
@@ -32,33 +29,20 @@ def detect(opt):
     device = select_device(opt.device)
     half = device.type != 'cpu' and not save_txt_tidl  # half precision only supported on CUDA
 
-    # Load model
+    # Load model ------
+    # weights = best.pt
     model = attempt_load(weights, map_location=device)  # load FP32 model
     stride = int(model.stride.max())  # model stride
-    if isinstance(imgsz, (list,tuple)):
-        assert len(imgsz) ==2; "height and width of image has to be specified"
-        imgsz[0] = check_img_size(imgsz[0], s=stride)
-        imgsz[1] = check_img_size(imgsz[1], s=stride)
-    else:
-        imgsz = check_img_size(imgsz, s=stride)  # check img_size
+
+    imgsz = check_img_size(imgsz, s=stride)  # check img_size
     names = model.module.names if hasattr(model, 'module') else model.names  # get class names
     if half:
         model.half()  # to FP16
 
-    # Second-stage classifier
-    classify = False
-    if classify:
-        modelc = load_classifier(name='resnet101', n=2)  # initialize
-        modelc.load_state_dict(torch.load('weights/resnet101.pt', map_location=device)['model']).to(device).eval()
-
     # Set Dataloader
     vid_path, vid_writer = None, None
-    if webcam:
-        view_img = check_imshow()
-        cudnn.benchmark = True  # set True to speed up constant image size inference
-        dataset = LoadStreams(source, img_size=imgsz, stride=stride)
-    else:
-        dataset = LoadImages(source, img_size=imgsz, stride=stride)
+
+    dataset = LoadImages(source, img_size=imgsz, stride=stride)
 
     # Run inference
     if device.type != 'cpu':
@@ -78,10 +62,6 @@ def detect(opt):
         # Apply NMS
         pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms, kpt_label=kpt_label)
         t2 = time_synchronized()
-
-        # Apply Classifier
-        if classify:
-            pred = apply_classifier(pred, modelc, img, im0s)
 
         # Process detections
         for i, det in enumerate(pred):  # detections per image
@@ -166,7 +146,7 @@ def detect(opt):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default='yolov5s.pt', help='model.pt path(s)')
-    parser.add_argument('--source', type=str, default='/home/xingliu/Datasets/ASD_test_frames', help='source')  # file/folder, 0 for webcam
+    parser.add_argument('--source', type=str, default='data/images', help='source')  # file/folder, 0 for webcam
     parser.add_argument('--img-size', nargs= '+', type=int, default=640, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.25, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.45, help='IOU threshold for NMS')
@@ -191,7 +171,6 @@ if __name__ == '__main__':
     parser.add_argument('--kpt-label', type=int, default=5, help='number of keypoints')
     opt = parser.parse_args()
     print(opt)
-    check_requirements(exclude=('tensorboard', 'pycocotools', 'thop'))
 
     opt.weights = 'best.pt'
     with torch.no_grad():
